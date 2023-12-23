@@ -1,0 +1,127 @@
+name: Build and Validate
+permissions: write-all
+on:
+  # NOTE: Include "[no ci]", "[skip ci]", or "[ci skip]" in the commit message
+  #       to prevent push and pull_request events from triggering workflows.
+
+  push:
+    tags:
+      - '*'
+
+  # By default, only `opened`, `synchronize`, and `reopened` activity types will trigger the workflow
+  pull_request:
+
+  # Manual trigger:
+  workflow_dispatch:
+
+env:
+  BUILD_TYPE: Release
+  CMAKE_BUILD_PARALLEL_LEVEL: 3 # Use up to 3 CPUs to build juceaide, etc.
+  STRICTNESS_LEVEL: 10    # Strictness level for pluginval validation
+  TIMEOUT_MS: 60000       # Set pluginval to time out after 1 minute
+
+
+
+# Jobs run in parallel by default
+jobs:
+  build_and_validate:
+    name: Build and validate on ${{ matrix.config.name }}
+  
+    runs-on: ${{ matrix.config.os }}
+    
+    strategy:
+      # Don't cancel all in-progress jobs if any matrix job fails:
+      fail-fast: false
+      # Define a matrix of job configurations:
+      matrix:
+        config:
+        - {
+            name: 'macos',
+            os: macos-11,
+            gen: 'Xcode',   # CMake generator
+            # Use ccache. Enable building universal binaries. Set the minimum MacOS target:
+            cmake_config_flags: "-G \"Xcode\" -D CMAKE_C_COMPILER_LAUNCHER=ccache -D CMAKE_CXX_COMPILER_LAUNCHER=ccache -D CMAKE_OSX_ARCHITECTURES=arm64\\;x86_64 -D CMAKE_OSX_DEPLOYMENT_TARGET=10.13",
+            # Enable parallel builds with make:
+            cmake_build_flags: "--parallel 6",
+          }
+        - {
+            name: 'windows',
+            os: windows-2022,
+            gen: 'MSVC',    # CMake generator
+            cmake_config_flags: "-G \"Visual Studio 17 2022\" -A x64 -T v141 -DCMAKE_SYSTEM_VERSION=\"8.1\"",
+          }
+        - {
+            name: 'linux',
+            os: ubuntu-20.04
+          }
+
+    # Steps run in sequence. Each step runs in its own process in the runner environment and has access to the workspace and filesystem
+    # NB! Because steps run in their own process, changes to environment variables are not preserved between steps
+    steps:
+
+    - if: runner.os == 'Linux'
+      run: |
+        sudo apt update -y
+        sudo apt install -y libasound2-dev libjack-jackd2-dev \
+            ladspa-sdk \
+            libcurl4-openssl-dev  \
+            libfreetype6-dev \
+            libx11-dev libxcomposite-dev libxcursor-dev libxcursor-dev libxext-dev libxinerama-dev libxrandr-dev libxrender-dev \
+            libwebkit2gtk-4.0-dev \
+            libglu1-mesa-dev mesa-common-dev
+
+    - name: Checkout code 
+      uses: actions/checkout@v3
+
+    # Use the ccache compiler cache to speed up builds
+    # Note: ccache does not support Windows
+    - name: Enable ccache
+      if: runner.os != 'Windows'
+      uses: hendrikmuhs/ccache-action@v1
+      with:
+        key: ${{ runner.os }}-${{ env.BUILD_TYPE }}
+
+    # Set up the dependency cache to be updated for every new commit
+    # We include the CMake generator name in the cache key. This helps avoiding cache conflicts when switching generators
+    - name: Cache dependencies
+      uses: actions/cache@v3
+      with:
+        path: Libs
+        key: libs-${{ runner.os }}-${{ matrix.config.gen }}-${{ github.sha }}
+        restore-keys: libs-${{ runner.os }}-${{ matrix.config.gen }}-
+
+    - name: Set version
+      shell: bash
+      run: |
+        VERSION_NUMBER=$(echo $GITHUB_REF_NAME | sed 's/v//')
+        sed -i.bak "s/0.0.0/${VERSION_NUMBER}/" CMakeLists.txt
+        echo $VERSION_NUMBER
+
+    - name: Configure CMake
+      run: cmake -B Build ${{ matrix.config.cmake_config_flags }} -D CMAKE_BUILD_TYPE=${{ env.BUILD_TYPE }} -D NO_ASIO=ON
+
+    - name: Build
+      run: cmake --build Build --config ${{ env.BUILD_TYPE }} ${{ matrix.config.cmake_build_flags }}
+
+    - name: Prepare build artifacts
+      shell: bash
+      working-directory: Build
+      run: |
+        shopt -s extglob  # Enable bash extended globbing
+        mkdir ${{ runner.os }}-${{github.ref_name}}
+        cpack
+        mv cpack/ndi* ${{ runner.os }}-${{github.ref_name}}/
+
+    - if: runner.os == 'Windows'
+      run: |
+        Compress-Archive -Path Build\${{ runner.os }}-${{github.ref_name}}\* -Destination NDI_Audio_IO-${{ runner.os }}-${{github.ref_name}}.zip 
+
+    - if: runner.os != 'Windows'
+      run: |
+        zip --junk-paths NDI_Audio_IO-${{ runner.os }}-${{github.ref_name}}.zip Build/${{ runner.os }}-${{github.ref_name}}/*
+
+    - name: Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: NDI_Audio_IO-${{ runner.os }}-${{github.ref_name}}.zip 
+        draft: true

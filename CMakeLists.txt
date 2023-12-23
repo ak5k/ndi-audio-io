@@ -143,7 +143,7 @@ target_include_directories(${PROJECT_NAME}
         )
 
 # ASIO audio
-if (MSVC)
+if (MSVC AND NOT NO_ASIO)
 target_compile_definitions(
     ${PROJECT_NAME} 
     PUBLIC 

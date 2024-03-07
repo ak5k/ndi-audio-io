@@ -2,6 +2,8 @@
 
 # NDI Audio IO
 
+[Download](https://github.com/ak5k/ndi-audio-io/releases/latest)
+
 NDI Audio IO software can stream audio between compatible audio devices and/or
 audio plugin host software using NewTek NDI technology.
 

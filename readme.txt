@@ -4,8 +4,9 @@
 
 [Download](https://github.com/ak5k/ndi-audio-io/releases/latest)
 
-NDI Audio IO software can stream audio between compatible audio devices and/or
-audio plugin host software using NewTek NDI technology.
+NDI Audio IO software can stream audio between compatible audio devices 
+(standalone) and/or audio plugin host (VST3/AU) software using NewTek NDI
+technology.
 
 Channel count per source and total amount of sources depend on overall system
 performance. Modern and relatively powerful PC can handle multiple multichannel

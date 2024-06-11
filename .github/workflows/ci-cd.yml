@@ -48,7 +48,7 @@ jobs:
             name: 'windows',
             os: windows-2022,
             gen: 'MSVC',    # CMake generator
-            cmake_config_flags: "-G \"Visual Studio 17 2022\" -A x64 -T v141 -DCMAKE_SYSTEM_VERSION=\"8.1\"",
+            cmake_config_flags: "-G \"Visual Studio 17 2022\" -A x64",
           }
         - {
             name: 'linux',
